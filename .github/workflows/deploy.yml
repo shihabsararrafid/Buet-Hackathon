@@ -1,81 +1,57 @@
-# .github/workflows/deploy.yml
-name: Deploy to VPS
+name: Build and Deploy to VPS
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
 
-      - name: Install Docker Compose
-        run: |
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-          docker-compose --version
-
-      # Build images first
       - name: Build Docker images
-        run: docker-compose build
-
-      # List images to verify they were built
-      - name: List Docker images
-        run: docker images
-
-      # Save images with correct names
-      - name: Save Docker images
         run: |
-          mkdir -p images
-          # Save using the full repository names
-          docker save \
-            buet-hackathon-auth-service:latest \
-            buet-hackathon-ticket-service:latest \
-            buet-hackathon-notification-service:latest \
-            buet-hackathon-frontend-next:latest \
-            rabbitmq:3-management | gzip > images/services.tar.gz
+          # Build each service and save as a tar file
+          for service in auth-service ticket-service notification-service frontend-next; do
+            echo "Building $service..."
+            docker build -t buet-hackathon-$service:latest ./$service
+            docker save buet-hackathon-$service:latest -o $service.tar
+          done
 
-      - name: Install sshpass
-        run: sudo apt-get install sshpass
-
-      - name: Copy files to VPS
+      - name: Transfer Docker images to VPS
+        env:
+          VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          SERVER_IP: ${{ secrets.VPS_HOST}}
         run: |
-          # Create SSH directory
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+          # Install sshpass
+          sudo apt-get install -y sshpass
 
-          sshpass -p '${{ secrets.VPS_PASSWORD }}' scp -o StrictHostKeyChecking=no \
-            docker-compose.yml \
-            images/services.tar.gz \
-            .env \
-            deploy.sh \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/app/
+          # Copy the tar files to the server using sshpass
+          for service in auth-service ticket-service notification-service frontend-next; do
+            echo "Transferring $service.tar to VPS..."
+            sshpass -p "$VPS_PASSWORD" scp -o StrictHostKeyChecking=no $service.tar $VPS_USER@$SERVER_IP:/app/images/
+          done
 
-      - name: Deploy to VPS
+      - name: Deploy on VPS
+        env:
+          VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
-          sshpass -p '${{ secrets.VPS_PASSWORD }}' ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
-            cd ~/app
-            # Load the images
-            gunzip -c images/services.tar.gz | docker load
-            
-            # Create .env file
-            cat << EOF > .env
-            SMTP_USER=${{ secrets.SMTP_USER }}
-            SMTP_PASS=${{ secrets.SMTP_PASS }}
-            EOF
-            
-            # Make deploy script executable
-            chmod +x deploy.sh
-            
-            # Run deploy script
-            ./deploy.sh
-          '
+          # SSH into the server and load the images and run the containers using sshpass
+          sshpass -p "$VPS_PASSWORD" ssh -o StrictHostKeyChecking=no $VPS_USER@$SERVER_IP << 'EOF'
+            for service in auth-service ticket-service notification-service frontend-next; do
+              echo "Loading $service image..."
+              docker load -i /app/images/$service.tar
+              echo "Running $service container..."
+              docker run -d --name $service buet-hackathon-$service:latest
+            done
+          EOF

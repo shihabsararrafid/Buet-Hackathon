@@ -63,7 +63,7 @@ const LoginForm = () => {
 
       // Make API call to login endpoint
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/api/v1/auth/login`,
+        `${process.env.NEXT_PUBLIC_AUTH_URL}/api/user/login`,
         {
           email: formData.email,
           password: formData.password,

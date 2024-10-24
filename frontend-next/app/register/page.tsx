@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { Suspense } from "react";
 import { useState } from "react";
 import { User, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import {
@@ -14,7 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Link from "next/link";
-
+import Swal from "sweetalert2";
+import axios from "axios";
+import { useRouter, useSearchParams } from "next/navigation";
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <RegisterForm />
+    </Suspense>
+  );
+}
 const RegisterForm = () => {
   const [formData, setFormData] = useState({
     name: "",
@@ -22,28 +31,133 @@ const RegisterForm = () => {
     password: "",
     confirmPassword: "",
   });
-
+  const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [error, setError] = useState("");
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError("");
 
-    // Basic validation
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match");
-      return;
+    try {
+      // Start loading
+      // setIsLoading(true);
+
+      // Validate form data
+      if (!formData.email || !formData.password || !formData.name) {
+        Swal.fire({
+          icon: "error",
+          title: "Validation Error",
+          text: "Please fill in all fields",
+          confirmButtonColor: "#3085d6",
+        });
+        return;
+      }
+
+      // Show loading state
+      Swal.fire({
+        title: "Logging in...",
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      // Make API call to login endpoint
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_AUTH_URL}/api/user/adduser`,
+        {
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+        }
+      );
+
+      if (response.data.success) {
+        // Store user data if needed
+        if (response.data.user) {
+          sessionStorage.setItem("user", JSON.stringify(response.data.user));
+        }
+
+        // Show success message
+        await Swal.fire({
+          icon: "success",
+          title: "Registration Successful",
+
+          timer: 1500,
+          showConfirmButton: false,
+          position: "top-end",
+          toast: true,
+        });
+
+        const redirect_url = searchParams.get("redirect_url");
+
+        // Redirect to home page or dashboard
+        router.push(
+          redirect_url && redirect_url !== null
+            ? `login?redirect_url=${redirect_url}`
+            : "/"
+        );
+      } else {
+        throw new Error(response.data.message || "Login failed");
+      }
+    } catch (error) {
+      let errorMessage = "Login failed. Please try again.";
+      let errorTitle = "Login Failed";
+
+      if (axios.isAxiosError(error)) {
+        // Handle different error status codes
+        if (error.response) {
+          switch (error.response.status) {
+            case 400:
+              errorMessage = "Invalid email or password format.";
+              errorTitle = "Invalid Input";
+              break;
+            case 401:
+              errorMessage = "Incorrect email or password.";
+              errorTitle = "Authentication Failed";
+              break;
+            case 404:
+              errorMessage =
+                "Account not found. Please check your email or sign up.";
+              errorTitle = "Account Not Found";
+              break;
+            case 429:
+              errorMessage = "Too many login attempts. Please try again later.";
+              errorTitle = "Too Many Attempts";
+              break;
+            case 500:
+              errorMessage = "Server error. Please try again later.";
+              errorTitle = "Server Error";
+              break;
+            default:
+              errorMessage = error.response.data.message || errorMessage;
+          }
+        } else if (error.request) {
+          errorMessage =
+            "No response from server. Please check your connection.";
+          errorTitle = "Connection Error";
+        }
+      }
+
+      // Show error message
+      await Swal.fire({
+        icon: "error",
+        title: errorTitle,
+        text: errorMessage,
+        confirmButtonColor: "#3085d6",
+      });
+
+      // Clear password field on error
+      setFormData((prev) => ({
+        ...prev,
+        password: "",
+      }));
+    } finally {
+      // setIsLoading(false);
     }
-
-    if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters long");
-      return;
-    }
-
-    console.log("Form submitted:", formData);
-    // Add your registration logic here
   };
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
@@ -169,5 +283,3 @@ const RegisterForm = () => {
     </div>
   );
 };
-
-export default RegisterForm;
