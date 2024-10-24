@@ -22,5 +22,24 @@ model train {
   number_of_seats  String
   ticket_fare      Int       @default(0)
   schedule      DateTime
+  tickets   ticket_booking[]
+}
+model ticket_booking {
+  id      String  @unique @id @default(cuid())
+  owner_id  String
+  schedule_date  DateTime
+  purchased_at   DateTime
+  start_place  String
+  end_place    String
+  train   train @relation(fields: [trainId], references: [id])
+  trainId       String
+  seat_no       Int
+  status        Booking_Status   @default(BOOKED)
+  @@unique([schedule_date,seat_no,start_place,end_place,trainId])
+
+}
+enum Booking_Status {
+  BOOKED
+  CONFIRMED
 }
 
