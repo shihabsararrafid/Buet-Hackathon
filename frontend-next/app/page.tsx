@@ -18,11 +18,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { useRouter } from "next/navigation";
 
 const TicketBookingHome = () => {
   const [selectedDate, setSelectedDate] = useState("");
   const [fromLocation, setFromLocation] = useState("");
   const [toLocation, setToLocation] = useState("");
+  const router = useRouter();
 
   const divisions = [
     "Dhaka",
@@ -41,6 +43,9 @@ const TicketBookingHome = () => {
       toLocation,
       selectedDate,
     });
+    router.push(
+      `/search-result?from=${fromLocation}&to=${toLocation}&schedule_date=${selectedDate}`
+    );
     // Add your search logic here
   };
 
@@ -77,10 +82,7 @@ const TicketBookingHome = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {divisions.map((division) => (
-                        <SelectItem
-                          key={division}
-                          value={division.toLowerCase()}
-                        >
+                        <SelectItem key={division} value={division}>
                           {division}
                         </SelectItem>
                       ))}
@@ -97,10 +99,7 @@ const TicketBookingHome = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {divisions.map((division) => (
-                        <SelectItem
-                          key={division}
-                          value={division.toLowerCase()}
-                        >
+                        <SelectItem key={division} value={division}>
                           {division}
                         </SelectItem>
                       ))}

@@ -6,44 +6,118 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronDown, Clock, Train } from "lucide-react";
-import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import axios from "axios";
+import { ChevronDown, Clock, Loader2, Train } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+// Enum for ticket status
+enum BookingStatus {
+  BOOKED = "BOOKED",
+  CONFIRMED = "CONFIRMED",
+}
 
-// Demo data
-const DEMO_TRAINS = [
-  {
-    id: "train_1",
-    name: "Padma Express",
-    start_place: "Dhaka",
-    end_place: "Chittagong",
-    number_of_seats: "40",
-    ticket_fare: 500,
-    schedule: new Date("2024-10-24T10:00:00"),
-    tickets: [
-      { seat_no: 1, status: "BOOKED" },
-      { seat_no: 4, status: "BOOKED" },
-      { seat_no: 7, status: "CONFIRMED" },
-      { seat_no: 12, status: "BOOKED" },
-    ],
-  },
-  {
-    id: "train_2",
-    name: "Sundarban Express",
-    start_place: "Dhaka",
-    end_place: "Chittagong",
-    number_of_seats: "40",
-    ticket_fare: 450,
-    schedule: new Date("2024-10-24T14:00:00"),
-    tickets: [
-      { seat_no: 2, status: "BOOKED" },
-      { seat_no: 5, status: "CONFIRMED" },
-      { seat_no: 8, status: "BOOKED" },
-    ],
-  },
-];
+// Interface for ticket data
+interface Ticket {
+  id: string;
+  owner_id: string;
+  schedule_date: Date;
+  purchased_at: Date;
+  start_place: string;
+  end_place: string;
+  trainId: string;
+  seat_no: number[];
+  status: BookingStatus;
+}
+
+// Interface for train data
+interface Train {
+  id: string;
+  name: string;
+  start_place: string;
+  end_place: string;
+  number_of_seats: string;
+  ticket_fare: number;
+  schedule: Date;
+  tickets: Ticket[];
+}
+
+// Interface for selected seats state
+interface SelectedSeats {
+  [trainId: string]: number[];
+}
+
+// Interface for API response
+interface ApiResponse {
+  data: Train[];
+}
 
 const TrainSearchResults = () => {
-  const [selectedSeats, setSelectedSeats] = useState({});
+  const [selectedSeats, setSelectedSeats] = useState<SelectedSeats>({});
+  const [trains, setTrains] = useState<Train[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchTrains = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const from = searchParams.get("from");
+        const to = searchParams.get("to");
+        const scheduleDate = searchParams.get("schedule_date");
+        console.log(searchParams);
+        if (!from || !to || !scheduleDate) {
+          throw new Error("Missing required search parameters");
+        }
+
+        const response: ApiResponse = await axios.get(
+          `${process.env.NEXT_PUBLIC_BASE_URL}/train`,
+          {
+            params: {
+              start_place: from,
+              end_place: to,
+              schedule_date: new Date(scheduleDate).toISOString(),
+            },
+          }
+        );
+
+        // Transform API response dates to Date objects
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const transformedTrains = response?.data?.result?.map(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (train: { schedule: string | number | Date; tickets: any[] }) => ({
+            ...train,
+            schedule: new Date(train.schedule),
+            tickets: train.tickets.map(
+              (ticket: {
+                schedule_date: string | number | Date;
+                purchased_at: string | number | Date;
+              }) => ({
+                ...ticket,
+                schedule_date: new Date(ticket.schedule_date),
+                purchased_at: new Date(ticket.purchased_at),
+              })
+            ),
+          })
+        );
+
+        setTrains(transformedTrains);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch trains");
+        console.error("Error fetching trains:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTrains();
+  }, [searchParams]);
 
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString("en-US", {
@@ -53,9 +127,12 @@ const TrainSearchResults = () => {
     });
   };
 
-  const getSeatStatus = (trainId: string, seatNo: number) => {
-    const train = DEMO_TRAINS.find((t) => t.id === trainId);
-    const ticket = train.tickets.find((t) => t.seat_no === seatNo);
+  const getSeatStatus = (
+    trainId: string,
+    seatNo: number
+  ): BookingStatus | null => {
+    const train = trains.find((t) => t.id === trainId);
+    const ticket = train?.tickets.find((t) => t.seat_no.includes(seatNo));
     return ticket ? ticket.status : null;
   };
 
@@ -73,7 +150,7 @@ const TrainSearchResults = () => {
     });
   };
 
-  const renderSeats = (train) => {
+  const renderSeats = (train: Train) => {
     const totalSeats = parseInt(train.number_of_seats);
     const seats = Array.from({ length: totalSeats }, (_, i) => i + 1);
     const trainSelectedSeats = selectedSeats[train.id] || [];
@@ -82,8 +159,8 @@ const TrainSearchResults = () => {
       <div className="grid grid-cols-4 gap-4 mt-4">
         {seats.map((seatNo) => {
           const status = getSeatStatus(train.id, seatNo);
-          const isBooked = status === "BOOKED";
-          const isConfirmed = status === "CONFIRMED";
+          const isBooked = status === BookingStatus.BOOKED;
+          const isConfirmed = status === BookingStatus.CONFIRMED;
           const isSelected = trainSelectedSeats.includes(seatNo);
 
           return (
@@ -113,17 +190,144 @@ const TrainSearchResults = () => {
     );
   };
 
-  const calculateTotalFare = (train) => {
+  const calculateTotalFare = (train: Train): number => {
     const numSelectedSeats = (selectedSeats[train.id] || []).length;
     return numSelectedSeats * train.ticket_fare;
   };
 
+  const handleBooking = async (train: Train) => {
+    try {
+      const selectedSeatsList = selectedSeats[train.id];
+      const scheduleDate = new Date(searchParams.get("schedule_date") || "");
+
+      // First attempt to book all selected seats
+      const seats: number[] = [];
+      selectedSeatsList.map(async (seatNo) => {
+        seats.push(seatNo);
+        return {};
+      });
+      const ticketData = {
+        owner_id: "user_id", // Replace with actual user ID from your auth system
+        schedule_date: scheduleDate,
+        start_place: train.start_place,
+        end_place: train.end_place,
+        trainId: train.id,
+        seat_no: seats,
+      };
+
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_BASE_URL}/ticket/book-ticket`,
+        ticketData
+      );
+
+      //   // If all bookings are successful, prepare booking details for payment
+      //   const bookingDetails = {
+      //     trainId: train.id,
+      //     trainName: train.name,
+      //     startPlace: train.start_place,
+      //     endPlace: train.end_place,
+      //     selectedSeats: selectedSeatsList,
+      //     schedule: train.schedule,
+      //     ticketFare: train.ticket_fare,
+      //     totalFare: calculateTotalFare(train),
+      //     scheduleDate: scheduleDate, // Add this to your BookingDetails interface
+      //   };
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      router.push(`/payment?bookingId=${response?.data?.result?.id}`);
+    } catch (error) {
+      // Handle specific error cases
+      if (axios.isAxiosError(error)) {
+        const errorMessage =
+          error.response?.data?.message || "Failed to book tickets";
+
+        if (error.response?.status === 400) {
+          // Handle already booked error
+          toast({
+            title: "Booking Failed",
+            description:
+              "One or more seats are already booked. Please try different seats.",
+            variant: "destructive",
+          });
+        } else if (error.response?.status === 404) {
+          // Handle train not found error
+          toast({
+            title: "Booking Failed",
+            description: "Train not found. Please refresh and try again.",
+            variant: "destructive",
+          });
+        } else {
+          // Handle other errors
+          toast({
+            title: "Booking Failed",
+            description: errorMessage,
+            variant: "destructive",
+          });
+        }
+      }
+    }
+  };
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-4 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <p className="text-gray-600">Loading available trains...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto p-4 max-w-4xl">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+          <h2 className="font-semibold mb-2">Error Loading Trains</h2>
+          <p>{error}</p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => router.back()}
+          >
+            Go Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (trains.length === 0) {
+    return (
+      <div className="container mx-auto p-4 max-w-4xl">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-700">
+          <h2 className="font-semibold mb-2">No Trains Found</h2>
+          <p>No trains available for the selected route and date.</p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => router.back()}
+          >
+            Modify Search
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto p-4 max-w-4xl">
-      <h1 className="text-2xl font-bold mb-6">Available Trains</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Available Trains</h1>
+        <div className="text-sm text-gray-500">
+          {searchParams.get("from")} to {searchParams.get("to")} •{" "}
+          {new Date(
+            searchParams.get("schedule_date") ?? ""
+          ).toLocaleDateString()}
+        </div>
+      </div>
 
       <div className="space-y-4">
-        {DEMO_TRAINS.map((train) => (
+        {trains.map((train) => (
           <Card key={train.id} className="w-full">
             <Collapsible>
               <div className="p-4">
@@ -195,11 +399,7 @@ const TrainSearchResults = () => {
                           Total Fare: ৳{calculateTotalFare(train)}
                         </p>
                       </div>
-                      <Button
-                        onClick={() =>
-                          console.log("Booking seats:", selectedSeats[train.id])
-                        }
-                      >
+                      <Button onClick={() => handleBooking(train)}>
                         Book {selectedSeats[train.id].length}{" "}
                         {selectedSeats[train.id].length === 1
                           ? "Seat"

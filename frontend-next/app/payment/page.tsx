@@ -1,17 +1,6 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import {
-  CreditCard,
-  Clock,
-  Check,
-  ChevronLeft,
-  Mail,
-  Train,
-  CalendarDays,
-  MapPin,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -21,13 +10,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useRouter } from "next/navigation";
+import axios from "axios";
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  Clock,
+  Mail,
+  MapPin,
+  Train,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import Swal from "sweetalert2";
 
 const PaymentPage = () => {
   const router = useRouter();
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
   const [step, setStep] = useState(1); // 1: Payment, 2: Processing, 3: Confirmation
   const [paymentMethod, setPaymentMethod] = useState("card");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isProcessing, setIsProcessing] = useState(false);
 
   // This would normally come from route params or state management
@@ -61,31 +63,117 @@ const PaymentPage = () => {
     } else if (timeLeft === 0 && step === 1) {
       router.push("/search-results"); // Redirect back to search results
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, step]);
 
-  const formatTime = (seconds) => {
+  const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
   };
 
-  const handleInputChange = (e) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleInputChange = (e: any) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
   };
+  const searchParams = useSearchParams();
 
   const handlePayment = async () => {
-    setIsProcessing(true);
-    setStep(2);
+    try {
+      setIsProcessing(true);
+      setStep(2);
 
-    // Simulate payment processing
-    setTimeout(() => {
-      setStep(3);
+      // Get booking details from URL or state
+
+      const bookingId = searchParams.get("bookingId") ?? "";
+      // Make the API call to confirm ticket
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_BASE_URL}/ticket/confirm-ticket/${bookingId}`,
+        {
+          // Add any required request body here
+          paymentMethod,
+          email: formData.email,
+          amount: bookingDetails.totalFare,
+          // Add other payment details as needed
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            // Add any required headers
+          },
+        }
+      );
+
+      if (response.data.success) {
+        // Payment successful
+        setStep(3);
+        Swal.fire("Success");
+
+        // Show success message
+        // toast({
+        //   title: "Payment Successful",
+        //   description: "Your ticket has been confirmed",
+        //   variant: "success",
+        // });
+
+        // You might want to store the confirmation details
+        // setConfirmationDetails(response.data.data);
+      } else {
+        // Payment failed but API responded
+        throw new Error(response.data.message || "Payment failed");
+      }
+    } catch (error) {
+      // Handle different types of errors
+      let errorMessage = "Payment failed. Please try again.";
+
+      if (axios.isAxiosError(error)) {
+        // Network or API errors
+        if (error.response) {
+          // The server responded with a status code outside the 2xx range
+          switch (error.response.status) {
+            case 400:
+              errorMessage =
+                "Invalid payment details. Please check and try again.";
+              break;
+            case 401:
+              errorMessage = "Authentication failed. Please log in again.";
+              break;
+            case 404:
+              errorMessage = "Ticket not found. Please try booking again.";
+              break;
+            case 409:
+              errorMessage = "This ticket has already been confirmed.";
+              break;
+            case 500:
+              errorMessage = "Server error. Please try again later.";
+              break;
+            default:
+              errorMessage = error.response.data.message || errorMessage;
+          }
+        } else if (error.request) {
+          // The request was made but no response was received
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          errorMessage =
+            "No response from server. Please check your connection.";
+        }
+      }
+      Swal.fire("Failed");
+      //   // Show error toast
+      //   toast({
+      //     title: "Payment Failed",
+      //     description: errorMessage,
+      //     variant: "destructive",
+      //   });
+
+      // Reset to payment form
+      setStep(1);
+    } finally {
       setIsProcessing(false);
-    }, 2000);
+    }
   };
 
   if (step === 3) {
