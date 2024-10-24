@@ -26,7 +26,7 @@ jobs:
 
       - name: Build Docker Images
         run: |
-          docker-compose -f docker-compose.yml build
+          docker-compose -f docker-compose.yaml build
 
       - name: Save Docker Images as Tar Files
         run: |
