@@ -5,6 +5,7 @@ services:
   auth-service:
     build: ./auth-service
     container_name: auth-service
+    image: buet-hackathon-auth-service:latest
     restart: unless-stopped
     ports:
       - "3001:3001"
@@ -47,6 +48,7 @@ services:
   ticket-service:
     build: ./ticket-service
     container_name: ticket-service
+    image: buet-hackathon-ticket-service:latest
     restart: unless-stopped
     ports:
       - "3002:3002"
@@ -87,6 +89,7 @@ services:
   notification-service:
     build: ./notification-service
     container_name: notification-service
+    image: buet-hackathon-notification-service:latest
     restart: unless-stopped
     environment:
       - NODE_ENV=production
@@ -103,6 +106,7 @@ services:
   frontend:
     build: ./frontend-next
     container_name: frontend-next
+    image: buet-hackathon-frontend-next:latest
     restart: unless-stopped
     ports:
       - "3000:3000"
