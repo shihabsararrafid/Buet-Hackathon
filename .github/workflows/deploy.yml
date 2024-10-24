@@ -1,79 +1,73 @@
-# .github/workflows/deploy.yml
-name: Deploy to VPS
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main] # or your default branch
-  pull_request:
-    branches: [main]
+    branches:
+      - main  # Change this to your main branch if different
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      - name: Cache Docker layers
-        uses: actions/cache@v2
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-
-      - name: Build all Docker images
+      - name: Build Docker Images
         run: |
-          docker-compose build \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache-new
+          docker-compose -f docker-compose.yml build
 
-      - name: Move cache
+      - name: Save Docker Images as Tar Files
         run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          # Save each service image to a tar file
+          docker save auth-service -o auth-service.tar
+          docker save ticket-service -o ticket-service.tar
+          docker save notification-service -o notification-service.tar
+          docker save frontend-next -o frontend-next.tar
+          docker save rabbitmq -o rabbitmq.tar
 
-      - name: Save Docker images
+      - name: Copy SSH Key
+        run: echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > id_rsa && chmod 600 id_rsa
+
+      - name: Transfer Images to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          mkdir -p images
-          docker save auth-service:latest ticket-service:latest notification-service:latest frontend-next:latest | gzip > images/services.tar.gz
+          scp -i id_rsa -o StrictHostKeyChecking=no auth-service.tar $VPS_USER@$VPS_HOST:/tmp/
+          scp -i id_rsa -o StrictHostKeyChecking=no ticket-service.tar $VPS_USER@$VPS_HOST:/tmp/
+          scp -i id_rsa -o StrictHostKeyChecking=no notification-service.tar $VPS_USER@$VPS_HOST:/tmp/
+          scp -i id_rsa -o StrictHostKeyChecking=no frontend-next.tar $VPS_USER@$VPS_HOST:/tmp/
+          scp -i id_rsa -o StrictHostKeyChecking=no rabbitmq.tar $VPS_USER@$VPS_HOST:/tmp/
 
-      - name: Install sshpass
-        run: sudo apt-get install sshpass
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build  # This job will only run after the build job completes successfully
 
-      - name: Copy files to VPS
-        run: |
-          # Disable strict host key checking
-          echo "Host *" > ~/.ssh/config
-          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-
-          sshpass -p '${{ secrets.VPS_PASSWORD }}' scp -o StrictHostKeyChecking=no \
-            docker-compose.yml \
-            images/services.tar.gz \
-            .env \
-            deploy.sh \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/app/
+    steps:
+      - name: Copy SSH Key
+        run: echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > id_rsa && chmod 600 id_rsa
 
       - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          sshpass -p '${{ secrets.VPS_PASSWORD }}' ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
-            cd ~/app
-            # Load the images
-            gunzip -c images/services.tar.gz | docker load
-            
-            # Create .env file
-            cat << EOF > .env
-            SMTP_USER=${{ secrets.SMTP_USER }}
-            SMTP_PASS=${{ secrets.SMTP_PASS }}
-            EOF
-            
-            # Make deploy script executable
-            chmod +x deploy.sh
-            
-            # Run deploy script
-            ./deploy.sh
-          '
+          ssh -i id_rsa -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << 'EOF'
+            # Load images from tar files
+            docker load -i /tmp/auth-service.tar
+            docker load -i /tmp/ticket-service.tar
+            docker load -i /tmp/notification-service.tar
+            docker load -i /tmp/frontend-next.tar
+            docker load -i /tmp/rabbitmq.tar
+
+            # Clean up tar files
+            rm /tmp/*.tar
+
+            # Start or restart the services
+            cd /path/to/your/project
+            docker-compose up -d
+          EOF
