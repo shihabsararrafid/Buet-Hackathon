@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -16,42 +15,187 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Build Docker images
+      - name: Build and Save Custom Service Images
         run: |
-          # Build each service and save as a tar file
+          # Build custom service images
           for service in auth-service ticket-service notification-service frontend-next; do
             echo "Building $service..."
             docker build -t buet-hackathon-$service:latest ./$service
             docker save buet-hackathon-$service:latest -o $service.tar
           done
 
-      - name: Transfer Docker images to VPS
+      - name: Pull and Save Base Images
+        run: |
+          # Pull and save base images
+          echo "Pulling postgres image..."
+          docker pull postgres:15-alpine
+          docker save postgres:15-alpine -o postgres.tar
+
+          echo "Pulling rabbitmq image..."
+          docker pull rabbitmq:3-management
+          docker save rabbitmq:3-management -o rabbitmq.tar
+
+      - name: Create directory and transfer Docker images to VPS
         env:
           VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          SERVER_IP: ${{ secrets.VPS_HOST}}
+          SERVER_IP: ${{ secrets.VPS_HOST }}
         run: |
           # Install sshpass
           sudo apt-get install -y sshpass
-
-          # Copy the tar files to the server using sshpass
+          
+          # Create directory on VPS
+          sshpass -p "$VPS_PASSWORD" ssh -o StrictHostKeyChecking=no $VPS_USER@$SERVER_IP << 'EOF'
+            sudo mkdir -p /app/images
+            sudo chmod 777 /app/images
+          EOF
+          
+          # Transfer custom service images
           for service in auth-service ticket-service notification-service frontend-next; do
             echo "Transferring $service.tar to VPS..."
             sshpass -p "$VPS_PASSWORD" scp -o StrictHostKeyChecking=no $service.tar $VPS_USER@$SERVER_IP:/app/images/
           done
 
+          # Transfer base images
+          echo "Transferring postgres.tar to VPS..."
+          sshpass -p "$VPS_PASSWORD" scp -o StrictHostKeyChecking=no postgres.tar $VPS_USER@$SERVER_IP:/app/images/
+          
+          echo "Transferring rabbitmq.tar to VPS..."
+          sshpass -p "$VPS_PASSWORD" scp -o StrictHostKeyChecking=no rabbitmq.tar $VPS_USER@$SERVER_IP:/app/images/
+
       - name: Deploy on VPS
         env:
           VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_IP: ${{ secrets.VPS_HOST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: |
-          # SSH into the server and load the images and run the containers using sshpass
           sshpass -p "$VPS_PASSWORD" ssh -o StrictHostKeyChecking=no $VPS_USER@$SERVER_IP << 'EOF'
-            for service in auth-service ticket-service notification-service frontend-next; do
-              echo "Loading $service image..."
-              docker load -i /app/images/$service.tar
-              echo "Running $service container..."
-              docker run -d --name $service buet-hackathon-$service:latest
+            cd /app/images
+
+            # Load all images
+            for image in *.tar; do
+              echo "Loading $image..."
+              docker load -i $image
             done
+
+            # Create network if it doesn't exist
+            if ! docker network ls | grep -q "backend-network"; then
+              docker network create backend-network
+            fi
+
+            # Stop and remove existing containers
+            services=("auth-db" "ticket-db" "rabbitmq" "auth-service" "ticket-service" "notification-service" "frontend-next")
+            for service in "${services[@]}"; do
+              if [ "$(docker ps -aq -f name=$service)" ]; then
+                echo "Stopping and removing $service..."
+                docker stop $service
+                docker rm $service
+              fi
+            done
+
+            # Create directories for volumes if they don't exist
+            sudo mkdir -p /app/data/auth-db
+            sudo mkdir -p /app/data/ticket-db
+            sudo mkdir -p /app/data/rabbitmq
+            sudo chmod -R 777 /app/data
+
+            # Start databases and RabbitMQ first
+            echo "Starting auth-db..."
+            docker run -d \
+              --name auth-db \
+              --network backend-network \
+              -e POSTGRES_DB=auth \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=KlVXqgEJKVIzLaE4fmI= \
+              -v /app/data/auth-db:/var/lib/postgresql/data \
+              -p 5430:5432 \
+              --restart unless-stopped \
+              postgres:15-alpine
+
+            echo "Starting ticket-db..."
+            docker run -d \
+              --name ticket-db \
+              --network backend-network \
+              -e POSTGRES_DB=ticket \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=KlVXqgEJKVIzLaE4fmI= \
+              -v /app/data/ticket-db:/var/lib/postgresql/data \
+              -p 5433:5432 \
+              --restart unless-stopped \
+              postgres:15-alpine
+
+            echo "Starting RabbitMQ..."
+            docker run -d \
+              --name rabbitmq \
+              --network backend-network \
+              -e RABBITMQ_DEFAULT_USER=guest \
+              -e RABBITMQ_DEFAULT_PASS=guest \
+              -v /app/data/rabbitmq:/var/lib/rabbitmq \
+              -p 5672:5672 \
+              -p 15672:15672 \
+              --restart unless-stopped \
+              rabbitmq:3-management
+
+            # Wait for databases and RabbitMQ to be ready
+            sleep 30
+
+            # Start services
+            echo "Starting auth-service..."
+            docker run -d \
+              --name auth-service \
+              --network backend-network \
+              -e NODE_ENV=production \
+              -e DATABASE_URL=postgresql://postgres:KlVXqgEJKVIzLaE4fmI=@auth-db:5432/auth?schema=public \
+              -e RABBITMQ_URL=amqp://rabbitmq:5672 \
+              -e PORT=3001 \
+              -e JWT_SECRET_KEY=gfg_jwt_secret_key \
+              -e TOKEN_HEADER_KEY=hackathon_token_header_key \
+              -p 3001:3001 \
+              --restart unless-stopped \
+              buet-hackathon-auth-service:latest
+
+            echo "Starting ticket-service..."
+            docker run -d \
+              --name ticket-service \
+              --network backend-network \
+              -e NODE_ENV=production \
+              -e DATABASE_URL=postgresql://postgres:KlVXqgEJKVIzLaE4fmI=@ticket-db:5432/ticket?schema=public \
+              -e RABBITMQ_URL=amqp://rabbitmq:5672 \
+              -e PORT=3002 \
+              -p 3002:3002 \
+              --restart unless-stopped \
+              buet-hackathon-ticket-service:latest
+
+            echo "Starting notification-service..."
+            docker run -d \
+              --name notification-service \
+              --network backend-network \
+              -e NODE_ENV=production \
+              -e RABBITMQ_URL=amqp://rabbitmq:5672 \
+              -e SMTP_HOST=smtp.gmail.com \
+              -e SMTP_PORT=587 \
+              -e SMTP_USER=$SMTP_USER \
+              -e SMTP_PASS=$SMTP_PASS \
+              --restart unless-stopped \
+              buet-hackathon-notification-service:latest
+
+            echo "Starting frontend..."
+            docker run -d \
+              --name frontend-next \
+              --network backend-network \
+              -e NODE_ENV=production \
+              -e NEXT_PUBLIC_AUTH_URL=http://auth-service:3001 \
+              -e NEXT_PUBLIC_TICKET_URL=http://ticket-service:3002 \
+              -e NEXT_PUBLIC_API_URL=http://ticket-service:3002/api/v1 \
+              -e AUTH_SERVICE_URL=http://auth-service:3001 \
+              -e TICKET_SERVICE_URL=http://ticket-service:3002 \
+              -e BASE_URL=http://ticket-service:3002/api/v1 \
+              -p 3000:3000 \
+              --restart unless-stopped \
+              buet-hackathon-frontend-next:latest
+
+            # Clean up tar files
+            rm -f *.tar
           EOF
