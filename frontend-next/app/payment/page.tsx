@@ -21,9 +21,15 @@ import {
   Train,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Swal from "sweetalert2";
-
+export default function PaymentPageComponent() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PaymentPage />
+    </Suspense>
+  );
+}
 const PaymentPage = () => {
   const router = useRouter();
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
@@ -443,5 +449,3 @@ const PaymentPage = () => {
     </div>
   );
 };
-
-export default PaymentPage;

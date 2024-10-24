@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import axios from "axios";
 import { ChevronDown, Clock, Loader2, Train } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Swal from "sweetalert2";
 // Enum for ticket status
 enum BookingStatus {
@@ -52,7 +52,13 @@ interface SelectedSeats {
 interface ApiResponse {
   data: Train[];
 }
-
+export default function TrainSearchResultsComponent() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <TrainSearchResults />
+    </Suspense>
+  );
+}
 const TrainSearchResults = () => {
   const [selectedSeats, setSelectedSeats] = useState<SelectedSeats>({});
   const [trains, setTrains] = useState<Train[]>([]);
@@ -429,5 +435,3 @@ const TrainSearchResults = () => {
     </div>
   );
 };
-
-export default TrainSearchResults;

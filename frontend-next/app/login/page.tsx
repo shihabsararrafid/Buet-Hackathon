@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { Suspense } from "react";
 import { useState } from "react";
 import { Mail, Lock } from "lucide-react";
 import {
@@ -16,7 +16,13 @@ import Link from "next/link";
 import Swal from "sweetalert2";
 import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
-
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoginForm />
+    </Suspense>
+  );
+}
 const LoginForm = () => {
   const [formData, setFormData] = useState({
     email: "",
@@ -229,5 +235,3 @@ const LoginForm = () => {
     </div>
   );
 };
-
-export default LoginForm;
