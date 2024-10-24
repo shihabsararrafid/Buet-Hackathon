@@ -2,9 +2,7 @@ import { Prisma } from "@prisma/client";
 import createHttpError from "http-errors";
 import prisma from "../../../database/dbConnection";
 
-export const BookTicketService = async (
-  data: Prisma.ticket_bookingCreateInput
-) =>
+export const BookTicketService = async (data: any) =>
   prisma.ticket_booking
     .create({
       data: data,

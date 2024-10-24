@@ -13,22 +13,24 @@ export const createTrains = (data: Prisma.trainCreateInput) =>
         ? new createHttpError.NotFound("Train not found")
         : err;
     });
-export const getTrains = async (data: {
-  start_place: string;
-  end_place: string;
-  schedule_date: Date;
+export const getTrainsService = async (data: {
+  start_place: any;
+  end_place: any;
+  schedule_date: any;
 }) => {
   try {
-    const result = await prisma.train.find({
+    const result = await prisma.train.findMany({
       where: {
-        start_date: data.start_place,
+        start_place: data.start_place,
         end_place: data.end_place,
       },
       include: {
-        ticket_booking: {
-          start_date: data.start_place,
-          end_place: data.end_place,
-          schedule_date: data.schedule_date,
+        tickets: {
+          where: {
+            schedule_date: data.schedule_date,
+            start_place: data.start_place,
+            end_place: data.end_place,
+          },
         },
       },
     });

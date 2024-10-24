@@ -26,9 +26,9 @@ model train {
 }
 model ticket_booking {
   id      String  @unique @id @default(cuid())
-  owner_id  String
+  owner_id  String 
   schedule_date  DateTime
-  purchased_at   DateTime
+  purchased_at   DateTime   @default(now())
   start_place  String
   end_place    String
   train   train @relation(fields: [trainId], references: [id])
