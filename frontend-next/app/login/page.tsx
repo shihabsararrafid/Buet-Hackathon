@@ -13,19 +13,151 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import Swal from "sweetalert2";
+import axios from "axios";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const LoginForm = () => {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const handleSubmit = (e) => {
+  // const [isLoading, setIsLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("Form submitted:", formData);
-    // Add your login logic here
-  };
 
+    try {
+      // Start loading
+      // setIsLoading(true);
+
+      // Validate form data
+      if (!formData.email || !formData.password) {
+        Swal.fire({
+          icon: "error",
+          title: "Validation Error",
+          text: "Please fill in all fields",
+          confirmButtonColor: "#3085d6",
+        });
+        return;
+      }
+
+      // Show loading state
+      Swal.fire({
+        title: "Logging in...",
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      // Make API call to login endpoint
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_AUTH_URL}/api/v1/auth/login`,
+        {
+          email: formData.email,
+          password: formData.password,
+        }
+      );
+
+      if (response.data.success && response.data.token) {
+        // Store token in session storage
+        sessionStorage.setItem("token", response.data.token);
+
+        // Store user data if needed
+        if (response.data.user) {
+          sessionStorage.setItem("user", JSON.stringify(response.data.user));
+        }
+
+        // Show success message
+        await Swal.fire({
+          icon: "success",
+          title: "Login Successful",
+          text: `Welcome back${
+            response.data.user?.name ? `, ${response.data.user.name}` : ""
+          }!`,
+          timer: 1500,
+          showConfirmButton: false,
+          position: "top-end",
+          toast: true,
+        });
+
+        // Reset form
+        setFormData({
+          email: "",
+          password: "",
+        });
+        const redirect_url = searchParams.get("redirect_url");
+
+        // Redirect to home page or dashboard
+        router.push(
+          redirect_url && redirect_url !== null ? `/${redirect_url}` : "/"
+        );
+      } else {
+        throw new Error(response.data.message || "Login failed");
+      }
+    } catch (error) {
+      let errorMessage = "Login failed. Please try again.";
+      let errorTitle = "Login Failed";
+
+      if (axios.isAxiosError(error)) {
+        // Handle different error status codes
+        if (error.response) {
+          switch (error.response.status) {
+            case 400:
+              errorMessage = "Invalid email or password format.";
+              errorTitle = "Invalid Input";
+              break;
+            case 401:
+              errorMessage = "Incorrect email or password.";
+              errorTitle = "Authentication Failed";
+              break;
+            case 404:
+              errorMessage =
+                "Account not found. Please check your email or sign up.";
+              errorTitle = "Account Not Found";
+              break;
+            case 429:
+              errorMessage = "Too many login attempts. Please try again later.";
+              errorTitle = "Too Many Attempts";
+              break;
+            case 500:
+              errorMessage = "Server error. Please try again later.";
+              errorTitle = "Server Error";
+              break;
+            default:
+              errorMessage = error.response.data.message || errorMessage;
+          }
+        } else if (error.request) {
+          errorMessage =
+            "No response from server. Please check your connection.";
+          errorTitle = "Connection Error";
+        }
+      }
+
+      // Show error message
+      await Swal.fire({
+        icon: "error",
+        title: errorTitle,
+        text: errorMessage,
+        confirmButtonColor: "#3085d6",
+      });
+
+      // Clear password field on error
+      setFormData((prev) => ({
+        ...prev,
+        password: "",
+      }));
+    } finally {
+      // setIsLoading(false);
+    }
+  };
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prevState) => ({

@@ -11,6 +11,7 @@ import axios from "axios";
 import { ChevronDown, Clock, Loader2, Train } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import Swal from "sweetalert2";
 // Enum for ticket status
 enum BookingStatus {
   BOOKED = "BOOKED",
@@ -197,6 +198,18 @@ const TrainSearchResults = () => {
 
   const handleBooking = async (train: Train) => {
     try {
+      const token = sessionStorage.getItem("token");
+
+      if (!token) {
+        Swal.fire({
+          icon: "warning",
+          title: "Session Expired",
+          text: "Please login to continue",
+          timer: 1500,
+        }).then(() => {
+          router.push(`/login?redirect_url=${window.location.pathname}`);
+        });
+      }
       const selectedSeatsList = selectedSeats[train.id];
       const scheduleDate = new Date(searchParams.get("schedule_date") || "");
 
