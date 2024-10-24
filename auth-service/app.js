@@ -13,6 +13,6 @@ app.set('tokenHeaderKey', config.tokenHeaderKey);
 // app.post("/user/register",createUser );
 
 // app.get("/user/validateToken", authController.validateToken);
-app.use('/user',userRouter)
+// app.use('/user',userRouter)
 
 module.exports = app;
