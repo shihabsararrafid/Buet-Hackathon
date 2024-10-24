@@ -1,0 +1,157 @@
+version: "3.8"
+
+services:
+  # Auth Service and its Database
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:KlVXqgEJKVIzLaE4fmI=@auth-db:5432/auth?schema=public
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - PORT =3001
+      - JWT_SECRET_KEY =gfg_jwt_secret_key
+      - TOKEN_HEADER_KEY =hackathon_token_header_key
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-db:
+        condition: service_healthy
+    networks:
+      - backend-network
+
+  auth-db:
+    image: postgres:15-alpine
+    container_name: auth-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=auth
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=KlVXqgEJKVIzLaE4fmI=
+    ports:
+      - "5430:5432"
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Ticket Service and its Database
+  ticket-service:
+    build: ./ticket-service
+    container_name: ticket-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:KlVXqgEJKVIzLaE4fmI=@ticket-db:5432/ticket?schema=public
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - PORT=3002
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      ticket-db:
+        condition: service_healthy
+    networks:
+      - backend-network
+
+  ticket-db:
+    image: postgres:15-alpine
+    container_name: ticket-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=ticket
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=KlVXqgEJKVIzLaE4fmI=
+    ports:
+      - "5433:5432"
+    volumes:
+      - ticket-db-data:/var/lib/postgresql/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Notification Service
+  notification-service:
+    build: ./notification-service
+    container_name: notification-service
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend-network
+  frontend:
+    build: ./frontend-next
+    container_name: frontend-next
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+    environment:
+      - NODE_ENV=production
+      # Use internal Docker network URLs
+      - NEXT_PUBLIC_AUTH_URL=http://auth-service:3001
+      - NEXT_PUBLIC_TICKET_URL=http://ticket-service:3002
+      - NEXT_PUBLIC_API_URL=http://ticket-service:3002/api/v1
+      # For server-side calls
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TICKET_SERVICE_URL=http://ticket-service:3002
+      - BASE_URL=http://ticket-service:3002/api/v1
+    depends_on:
+      - auth-service
+      - ticket-service
+    networks:
+      - backend-network
+  # RabbitMQ Service
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  backend-network:
+    driver: bridge
+
+volumes:
+  auth-db-data:
+    driver: local
+  ticket-db-data:
+    driver: local
+  rabbitmq-data:
+    driver: local

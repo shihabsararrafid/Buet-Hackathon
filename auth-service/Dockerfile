@@ -10,6 +10,8 @@ COPY package*.json ./
 # Install the dependencies
 RUN npm install
 
+# Copy the Prisma schema
+COPY prisma ./prisma
 # Copy the rest of the application code to the working directory
 COPY . .
 
@@ -19,5 +21,5 @@ RUN npx prisma generate
 # Expose the port that your application will run on
 EXPOSE 3000
 
-# Define the command to run your application
-CMD ["node", "server.js"]
+# Run Prisma migrations and start the application
+CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]

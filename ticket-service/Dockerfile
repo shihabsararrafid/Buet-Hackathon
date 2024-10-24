@@ -4,11 +4,12 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install app dependencies
-# A wildcard is used to ensure both package.json AND package-lock.json are copied
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
+# Copy the Prisma schema
+COPY prisma ./prisma
+# Install Prisma Client
+RUN npx prisma generate
 
 # Bundle app source
 COPY . .
@@ -19,5 +20,5 @@ RUN npm run build
 # Expose port
 EXPOSE 3000
 
-# Start the service
-CMD ["npm", "start"]
+# Run migrations and start the service
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
