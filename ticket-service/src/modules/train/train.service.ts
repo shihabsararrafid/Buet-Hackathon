@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import createHttpError from "http-errors";
 import prisma from "../../../database/dbConnection";
+import { endOfDay, startOfDay } from "date-fns";
 
 export const createTrains = (data: Prisma.trainCreateInput) =>
   prisma.train
@@ -27,7 +28,10 @@ export const getTrainsService = async (data: {
       include: {
         tickets: {
           where: {
-            schedule_date: data.schedule_date,
+            schedule_date: {
+              gte: startOfDay(new Date(data.schedule_date)),
+              lte: endOfDay(new Date(data.schedule_date)),
+            },
             start_place: data.start_place,
             end_place: data.end_place,
           },

@@ -8,7 +8,7 @@ export default class EmailService {
     this.transporter = nodemailer.createTransport(emailConfig);
   }
 
-  async sendEmail(to: string, subject: string, html: string) {
+  async sendEmail(_to: string, subject: string, html: string) {
     try {
       const mailOptions = {
         from: process.env.SMTP_USER,

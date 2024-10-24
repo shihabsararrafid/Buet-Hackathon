@@ -33,7 +33,7 @@ model ticket_booking {
   end_place    String
   train   train @relation(fields: [trainId], references: [id])
   trainId       String
-  seat_no       Int
+  seat_no       Int[]
   status        Booking_Status   @default(BOOKED)
   @@unique([schedule_date,seat_no,start_place,end_place,trainId])
 

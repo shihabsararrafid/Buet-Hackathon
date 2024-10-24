@@ -2,7 +2,9 @@ import { NextFunction, Request, Response } from "express";
 
 import { isHttpError } from "http-errors";
 import { BookTicketService, ConfirmTicketService } from "./ticket.service";
-
+import { RabbitMQService } from "../../services/rabbitmq.service";
+const rabbitMQService = RabbitMQService.getInstance();
+rabbitMQService.initialize();
 export const BookTicket = async (
   req: Request,
   res: Response,
@@ -15,6 +17,25 @@ export const BookTicket = async (
       message: "Ticket Booked Successfully",
       result: data,
     };
+    console.log("hello");
+
+    // Send notification
+    await rabbitMQService.publishNotification(
+      "notification.email.ticket_booked",
+      {
+        to: data.userEmail, // Assuming your ticket data has userEmail
+        subject: "Ticket Booking Confirmation",
+        template: "ticket_booked",
+        data: {
+          ticketId: data.id,
+          bookingDetails: {
+            ...data,
+            bookingTime: new Date().toISOString(),
+          },
+        },
+      }
+    );
+
     // req.responseMessage = responseMessage;
     res.status(200).json(responseMessage);
   } catch (error) {
