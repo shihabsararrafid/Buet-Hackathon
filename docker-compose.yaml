@@ -1,6 +1,21 @@
 version: "3.8"
 
 services:
+  api_gateway:
+    build: ./nginx
+    container_name: nginx-service
+    image: buet-hackathon-nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/api_gateway.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - auth-service
+      - ticket-service
+    networks:
+      - backend-network
+    restart: unless-stopped
   # Auth Service and its Database
   auth-service:
     build: ./auth-service
@@ -114,13 +129,13 @@ services:
     environment:
       - NODE_ENV=production
       # Use internal Docker network URLs
-      - NEXT_PUBLIC_AUTH_URL=http://auth-service:3001
-      - NEXT_PUBLIC_TICKET_URL=http://ticket-service:3002
-      - NEXT_PUBLIC_API_URL=http://ticket-service:3002/api/v1
+      - NEXT_PUBLIC_AUTH_URL=http://api_gateway/auth
+      - NEXT_PUBLIC_TICKET_URL=http://api_gateway/ticket
+      - NEXT_PUBLIC_API_URL=http://api_gateway/ticket/api/v1
       # For server-side calls
-      - AUTH_SERVICE_URL=http://auth-service:3001
-      - TICKET_SERVICE_URL=http://ticket-service:3002
-      - BASE_URL=http://ticket-service:3002/api/v1
+      - AUTH_SERVICE_URL=http://api_gateway/auth
+      - TICKET_SERVICE_URL=http://api_gateway/ticket
+      - BASE_URL=http://api_gateway/ticket/api/v1
     depends_on:
       - auth-service
       - ticket-service

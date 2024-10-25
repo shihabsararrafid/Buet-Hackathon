@@ -8,7 +8,7 @@ type bookingDataType = {
   trainId: string;
 };
 export async function consumeBookingRequests() {
-  const connection = await amqp.connect("amqp://localhost");
+  const connection = await amqp.connect("amqp://rabbitmq:5672");
   const channel = await connection.createChannel();
 
   const queue = "ticket_booking_queue";
