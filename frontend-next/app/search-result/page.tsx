@@ -213,47 +213,48 @@ const TrainSearchResults = () => {
           text: "Please login to continue",
           timer: 1500,
         }).then(() => {
-          router.push(`/login?redirect_url=${window.location.pathname}`);
+          router.push(`/login?redirect_url=${window.location}`);
         });
+      } else {
+        const selectedSeatsList = selectedSeats[train.id];
+        const scheduleDate = new Date(searchParams.get("schedule_date") || "");
+
+        // First attempt to book all selected seats
+        const seats: number[] = [];
+        selectedSeatsList.map(async (seatNo) => {
+          seats.push(seatNo);
+          return {};
+        });
+        const ticketData = {
+          owner_id: "user_id", // Replace with actual user ID from your auth system
+          schedule_date: scheduleDate,
+          start_place: train.start_place,
+          end_place: train.end_place,
+          trainId: train.id,
+          seat_no: seats,
+        };
+        // publishBookingRequest(ticketData);
+        const response = await axios.post(
+          `${process.env.NEXT_PUBLIC_BASE_URL}/ticket/book-ticket`,
+          ticketData
+        );
+
+        //   // If all bookings are successful, prepare booking details for payment
+        //   const bookingDetails = {
+        //     trainId: train.id,
+        //     trainName: train.name,
+        //     startPlace: train.start_place,
+        //     endPlace: train.end_place,
+        //     selectedSeats: selectedSeatsList,
+        //     schedule: train.schedule,
+        //     ticketFare: train.ticket_fare,
+        //     totalFare: calculateTotalFare(train),
+        //     scheduleDate: scheduleDate, // Add this to your BookingDetails interface
+        //   };
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        router.push(`/payment?bookingId=${response?.data?.result?.id}`);
       }
-      const selectedSeatsList = selectedSeats[train.id];
-      const scheduleDate = new Date(searchParams.get("schedule_date") || "");
-
-      // First attempt to book all selected seats
-      const seats: number[] = [];
-      selectedSeatsList.map(async (seatNo) => {
-        seats.push(seatNo);
-        return {};
-      });
-      const ticketData = {
-        owner_id: "user_id", // Replace with actual user ID from your auth system
-        schedule_date: scheduleDate,
-        start_place: train.start_place,
-        end_place: train.end_place,
-        trainId: train.id,
-        seat_no: seats,
-      };
-
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/ticket/book-ticket`,
-        ticketData
-      );
-
-      //   // If all bookings are successful, prepare booking details for payment
-      //   const bookingDetails = {
-      //     trainId: train.id,
-      //     trainName: train.name,
-      //     startPlace: train.start_place,
-      //     endPlace: train.end_place,
-      //     selectedSeats: selectedSeatsList,
-      //     schedule: train.schedule,
-      //     ticketFare: train.ticket_fare,
-      //     totalFare: calculateTotalFare(train),
-      //     scheduleDate: scheduleDate, // Add this to your BookingDetails interface
-      //   };
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      router.push(`/payment?bookingId=${response?.data?.result?.id}`);
     } catch (error) {
       // Handle specific error cases
       if (axios.isAxiosError(error)) {

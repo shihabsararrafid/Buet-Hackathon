@@ -1,8 +1,10 @@
+import { publishBookingRequest } from "./../../../utils/publishBookingRequest";
 import { NextFunction, Request, Response } from "express";
 
 import { isHttpError } from "http-errors";
 import { BookTicketService, ConfirmTicketService } from "./ticket.service";
 import { RabbitMQService } from "../../services/rabbitmq.service";
+
 const rabbitMQService = RabbitMQService.getInstance();
 rabbitMQService.initialize();
 export const BookTicket = async (
@@ -11,30 +13,13 @@ export const BookTicket = async (
   next: NextFunction
 ) => {
   try {
-    const data = await BookTicketService(req.body);
+    const data = publishBookingRequest(req.body);
     const responseMessage = {
       status: "Success",
       message: "Ticket Booked Successfully",
       result: data,
     };
     console.log("hello");
-
-    // Send notification
-    await rabbitMQService.publishNotification(
-      "notification.email.ticket_booked",
-      {
-        to: data.userEmail, // Assuming your ticket data has userEmail
-        subject: "Ticket Booking Confirmation",
-        template: "ticket_booked",
-        data: {
-          ticketId: data.id,
-          bookingDetails: {
-            ...data,
-            bookingTime: new Date().toISOString(),
-          },
-        },
-      }
-    );
 
     // req.responseMessage = responseMessage;
     res.status(200).json(responseMessage);
@@ -64,6 +49,22 @@ export const ConfirmTicket = async (
       message: "Ticket Confirmed",
       result: data,
     };
+    // Send notification
+    await rabbitMQService.publishNotification(
+      "notification.email.ticket_booked",
+      {
+        to: data.userEmail, // Assuming your ticket data has userEmail
+        subject: "Ticket Booking Confirmation",
+        template: "ticket_booked",
+        data: {
+          ticketId: data.id,
+          bookingDetails: {
+            ...data,
+            bookingTime: new Date().toISOString(),
+          },
+        },
+      }
+    );
     // req.responseMessage = responseMessage;
     res.status(200).json(responseMessage);
   } catch (error) {
