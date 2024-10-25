@@ -1,0 +1,98 @@
+# .github/workflows/microservices.yml
+name: Microservices CI
+
+on:
+  push:
+    paths:
+      - "auth-service/**"
+      - "ticket-service/**"
+      - "notification-service/**"
+  pull_request:
+    paths:
+      - "auth-service/**"
+      - "ticket-service/**"
+      - "notification-service/**"
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      auth-service: ${{ steps.filter.outputs.auth-service }}
+      ticket-service: ${{ steps.filter.outputs.ticket-service }}
+      notification-service: ${{ steps.filter.outputs.notification-service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            auth-service:
+              - 'auth-service/**'
+            ticket-service:
+              - 'ticket-service/**'
+            notification-service:
+              - 'notification-service/**'
+
+  auth-service:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.auth-service == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./auth-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+          cache: "npm"
+          cache-dependency-path: auth-service/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  ticket-service:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.ticket-service == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./ticket-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+          cache: "npm"
+          cache-dependency-path: ticket-service/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  notification-service:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.notification-service == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./notification-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+          cache: "npm"
+          cache-dependency-path: notification-service/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  # Summary job to show status of all services
+  summary:
+    needs: [auth-service, ticket-service, notification-service]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Service Test Summary
+        run: |
+          echo "Test Results Summary:"
+          echo "Auth Service: ${{ needs.auth-service.result }}"
+          echo "Ticket Service: ${{ needs.ticket-service.result }}"
+          echo "Notification Service: ${{ needs.notification-service.result }}"
